@@ -95,29 +95,30 @@ function SteelDeck({ deck, selected, onSelect }: {
     ...a.toArray(), ...c.toArray(), ...d.toArray(),
   ])
   const linePoints: number[] = []
+  const lift = (point: THREE.Vector3) => point.clone().add(new THREE.Vector3(0, 0.004, 0))
 
   for (let index = 0; index <= 8; index += 1) {
     const ratio = index / 8
-    linePoints.push(...a.clone().lerp(d, ratio).toArray(), ...b.clone().lerp(c, ratio).toArray())
+    linePoints.push(...lift(a.clone().lerp(d, ratio)).toArray(), ...lift(b.clone().lerp(c, ratio)).toArray())
   }
   for (let index = 0; index <= 4; index += 1) {
     const ratio = index / 4
-    linePoints.push(...a.clone().lerp(b, ratio).toArray(), ...d.clone().lerp(c, ratio).toArray())
+    linePoints.push(...lift(a.clone().lerp(b, ratio)).toArray(), ...lift(d.clone().lerp(c, ratio)).toArray())
   }
 
   return (
     <group onClick={(event) => { event.stopPropagation(); onSelect() }}>
-      <mesh>
+      <mesh renderOrder={1}>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[surfaceVertices, 3]} />
         </bufferGeometry>
-        <meshStandardMaterial color={selected ? '#ffb02e' : '#788a8c'} transparent opacity={0.3} side={THREE.DoubleSide} roughness={0.8} />
+        <meshStandardMaterial color={selected ? '#ffb02e' : '#788a8c'} transparent opacity={0.3} depthWrite={false} side={THREE.DoubleSide} roughness={0.8} />
       </mesh>
-      <lineSegments>
+      <lineSegments renderOrder={2}>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[new Float32Array(linePoints), 3]} />
         </bufferGeometry>
-        <lineBasicMaterial color={selected ? '#ffb02e' : '#40575a'} transparent opacity={0.8} />
+        <lineBasicMaterial color={selected ? '#ffb02e' : '#40575a'} transparent opacity={0.8} depthWrite={false} />
       </lineSegments>
     </group>
   )
@@ -283,7 +284,7 @@ export function ScaffoldViewer({ layout }: ViewerProps) {
         {selectedConnector && (
           <>
             <span className="field-caption">已选择 · {selectedConnector.id}</span>
-            <strong>{selectedConnector.type === 'splice' ? '搭接扣件' : '直角扣件'}</strong>
+            <strong>{selectedConnector.type === 'inline' ? '一字扣' : selectedConnector.type === 'universal' ? '万向扣' : '十字扣'}</strong>
             <dl><div><dt>关联构件</dt><dd>{selectedConnector.memberId}</dd></div></dl>
           </>
         )}

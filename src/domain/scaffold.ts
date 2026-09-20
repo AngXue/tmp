@@ -7,7 +7,7 @@ export type Point2D = {
 export type ScaffoldParameters = {
   height: number
   width: number
-  rowCount: number
+  deckSupportRailCount: number
   postSpacing: number
   liftHeight: number
   tubeEndExtension: number
@@ -53,7 +53,7 @@ export type DeckPanel = {
 
 export type ScaffoldConnector = {
   id: string
-  type: 'rightAngle' | 'splice'
+  type: 'cross' | 'universal' | 'inline'
   position: Vector3Tuple
   memberId: string
 }
@@ -80,8 +80,9 @@ export type MaterialResult = {
   utilization: number
   stockSummary: Record<string, number>
   connectorSummary: {
-    rightAngle: number
-    splice: number
+    cross: number
+    universal: null
+    inline: number
   }
   pendingMaterialSummary: {
     brace: null
@@ -103,7 +104,7 @@ export type ScaffoldLayout = {
 export const DEFAULT_PARAMETERS: ScaffoldParameters = {
   height: 8.4,
   width: 1.2,
-  rowCount: 2,
+  deckSupportRailCount: 2,
   postSpacing: 1.8,
   liftHeight: 1.8,
   tubeEndExtension: 0.1,
@@ -228,7 +229,7 @@ function createPipeAssembly(
       for (const positionRatio of [0.25, 0.75]) {
         spliceConnectors.push({
           id: `C-${member.id}-splice-${index}-${positionRatio}`,
-          type: 'splice',
+          type: 'inline',
           position: overlapStart.add(direction.scale(overlap * positionRatio)).add(lateral.scale(0.5)).toTuple(),
           memberId: member.id,
         })
@@ -310,8 +311,9 @@ function calculateMaterials(
     utilization: purchasedLength ? round((theoreticalLength / purchasedLength) * 100, 1) : 0,
     stockSummary,
     connectorSummary: {
-      rightAngle: connectors.filter((connector) => connector.type === 'rightAngle').length,
-      splice: connectors.filter((connector) => connector.type === 'splice').length,
+      cross: connectors.filter((connector) => connector.type === 'cross').length,
+      universal: null,
+      inline: connectors.filter((connector) => connector.type === 'inline').length,
     },
     pendingMaterialSummary: { brace: null },
     deckCount: decks.length,
@@ -325,7 +327,12 @@ export function calculateScaffold(
   segmentLengths: number[],
   parameters: ScaffoldParameters,
 ): ScaffoldLayout {
-  parameters = { ...DEFAULT_PARAMETERS, ...parameters }
+  const legacyParameters = parameters as ScaffoldParameters & { rowCount?: number }
+  parameters = {
+    ...DEFAULT_PARAMETERS,
+    ...parameters,
+    deckSupportRailCount: parameters.deckSupportRailCount ?? legacyParameters.rowCount ?? DEFAULT_PARAMETERS.deckSupportRailCount,
+  }
   const physical = getPhysicalPoints(points, segmentLengths)
   const members: ScaffoldMember[] = []
   const decks: DeckPanel[] = []
@@ -359,7 +366,8 @@ export function calculateScaffold(
   }
 
   const layerCount = Math.max(1, Math.ceil(parameters.height / parameters.liftHeight))
-  const rowCount = Math.max(2, Math.round(parameters.rowCount))
+  const postRowCount = 2
+  const supportRailCount = Math.max(2, Math.round(parameters.deckSupportRailCount))
   physical.slice(0, -1).forEach((start2d, segmentIndex) => {
     const end2d = physical[segmentIndex + 1]
     const segmentLength = Math.hypot(end2d[0] - start2d[0], end2d[1] - start2d[1])
@@ -377,17 +385,17 @@ export function calculateScaffold(
       (end2d[1] - start2d[1]) / segmentLength,
     ]
     const normal: [number, number] = [-direction[1], direction[0]]
-    const rows: Array<Array<Vector3Tuple>> = Array.from({ length: rowCount }, () => [])
+    const postRows: Array<Array<Vector3Tuple>> = Array.from({ length: postRowCount }, () => [])
 
     for (let station = 0; station <= bayCount; station += 1) {
-      for (let row = 0; row < rowCount; row += 1) {
-        const offset = (row / (rowCount - 1)) * parameters.width
+      for (let row = 0; row < postRowCount; row += 1) {
+        const offset = row * parameters.width
         const point: Vector3Tuple = [
           round(start2d[0] + direction[0] * bayLength * station + normal[0] * offset),
           0,
           round(start2d[1] + direction[1] * bayLength * station + normal[1] * offset),
         ]
-        rows[row].push(point)
+        postRows[row].push(point)
         const key = pointKey(point)
         if (!postKeys.has(key)) {
           postKeys.add(key)
@@ -405,9 +413,21 @@ export function calculateScaffold(
       }
     }
 
+    const supportRows = Array.from({ length: supportRailCount }, (_, supportIndex) => {
+      const ratio = supportIndex / (supportRailCount - 1)
+      return postRows[0].map((outerPoint, station) => {
+        const innerPoint = postRows[1][station]
+        return [
+          round(outerPoint[0] + (innerPoint[0] - outerPoint[0]) * ratio),
+          0,
+          round(outerPoint[2] + (innerPoint[2] - outerPoint[2]) * ratio),
+        ] as Vector3Tuple
+      })
+    })
+
     for (let layer = 1; layer <= layerCount; layer += 1) {
       const elevation = Math.min(parameters.height, round(layer * parameters.liftHeight))
-      for (const row of rows) {
+      for (const row of supportRows) {
         const connectionPoints = row.map((point) => [point[0], elevation, point[2]] as Vector3Tuple)
         addMember(
           'longitudinal',
@@ -419,9 +439,13 @@ export function calculateScaffold(
         )
       }
 
-      rows[0].forEach((outerPoint, station) => {
-        const innerPoint = rows[rowCount - 1][station]
-        const transverseConnections = rows.map((row) => [row[station][0], elevation, row[station][2]] as Vector3Tuple)
+      postRows[0].forEach((outerPoint, station) => {
+        const isInternalPathNode = (station === 0 && segmentIndex > 0) ||
+          (station === bayCount && segmentIndex < physical.length - 2)
+        if (isInternalPathNode) return
+
+        const innerPoint = postRows[1][station]
+        const transverseConnections = supportRows.map((row) => [row[station][0], elevation, row[station][2]] as Vector3Tuple)
         addMember(
           'transverse',
           [outerPoint[0], elevation, outerPoint[2]],
@@ -434,10 +458,10 @@ export function calculateScaffold(
 
       if (layer % Math.max(1, Math.round(parameters.deckLiftInterval)) === 0) {
         for (let bay = 0; bay < bayCount; bay += 1) {
-          const outerStart = rows[0][bay]
-          const outerEnd = rows[0][bay + 1]
-          const innerEnd = rows[rowCount - 1][bay + 1]
-          const innerStart = rows[rowCount - 1][bay]
+          const outerStart = postRows[0][bay]
+          const outerEnd = postRows[0][bay + 1]
+          const innerEnd = postRows[1][bay + 1]
+          const innerStart = postRows[1][bay]
           const deckElevation = elevation + 0.055
           decks.push({
             id: `D${decks.length + 1}`,
@@ -463,19 +487,41 @@ export function calculateScaffold(
     }
   })
 
-  const rightAngleConnectors: ScaffoldConnector[] = members
-    .filter((member) => member.type !== 'post')
-    .flatMap((member) => member.connectionPoints.map((position, index) => ({
+  const rawCrossConnectors: ScaffoldConnector[] = members.flatMap((member) => {
+    if (member.type === 'post') return []
+    const connectionPoints = member.type === 'transverse'
+      ? [member.connectionPoints[0], member.connectionPoints[member.connectionPoints.length - 1]]
+      : member.connectionPoints
+    const verticalOffset = member.type === 'longitudinal'
+      ? parameters.pipeDiameter * 0.65
+      : -parameters.pipeDiameter * 0.65
+
+    return connectionPoints.map((position, index) => ({
       id: `C-${member.id}-${index + 1}`,
-      type: 'rightAngle' as const,
-      position,
+      type: 'cross' as const,
+      position: [position[0], round(position[1] + verticalOffset), position[2]] as Vector3Tuple,
       memberId: member.id,
-    })))
+    }))
+  })
+  const connectorsByPosition = rawCrossConnectors.reduce<Map<string, ScaffoldConnector[]>>((groups, connector) => {
+    const key = pointKey(connector.position)
+    groups.set(key, [...(groups.get(key) ?? []), connector])
+    return groups
+  }, new Map())
+  const crossConnectors = [...connectorsByPosition.values()].flatMap((connectorsAtPoint) =>
+    connectorsAtPoint.map((connector, index) => {
+      if (connectorsAtPoint.length === 1) return connector
+      const offset = (index - (connectorsAtPoint.length - 1) / 2) * parameters.pipeDiameter * 1.4
+      return {
+        ...connector,
+        position: [round(connector.position[0] + offset), connector.position[1], connector.position[2]] as Vector3Tuple,
+      }
+    }))
   const assemblies = members.map((member) =>
     createPipeAssembly(member, parameters.stockLengths, parameters.spliceOverlap, parameters.pipeDiameter))
   const pipeSegments = assemblies.flatMap((assembly) => assembly.segments)
   const connectors = [
-    ...rightAngleConnectors,
+    ...crossConnectors,
     ...assemblies.flatMap((assembly) => assembly.connectors),
   ]
   const assemblyPlans = assemblies.map((assembly) => assembly.plan)

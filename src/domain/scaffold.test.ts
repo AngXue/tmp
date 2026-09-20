@@ -27,12 +27,15 @@ describe('calculateScaffold', () => {
     expect(layout.materials.utilization).toBeGreaterThan(0)
   })
 
-  it('supports three post rows and physical tube overhangs', () => {
-    const parameters = { ...DEFAULT_PARAMETERS, rowCount: 3 }
+  it('adds a third deck support rail without adding posts', () => {
+    const parameters = { ...DEFAULT_PARAMETERS, deckSupportRailCount: 3 }
     const layout = calculateScaffold(points.slice(0, 2), [3.6], parameters)
     const transverse = layout.members.find((member) => member.type === 'transverse')
+    const twoRailLayout = calculateScaffold(points.slice(0, 2), [3.6], DEFAULT_PARAMETERS)
 
-    expect(countMembers(layout).post).toBe(9)
+    expect(countMembers(layout).post).toBe(6)
+    expect(countMembers(layout).post).toBe(countMembers(twoRailLayout).post)
+    expect(countMembers(layout).longitudinal).toBe(countMembers(twoRailLayout).longitudinal * 1.5)
     expect(transverse?.connectionPoints).toHaveLength(3)
     expect(transverse?.length).toBeCloseTo(parameters.width + parameters.tubeEndExtension * 2, 3)
     expect(layout.decks).toHaveLength(10)
@@ -48,7 +51,7 @@ describe('calculateScaffold', () => {
     expect(segments.length).toBeGreaterThan(1)
     expect(segments.every((segment) => parameters.stockLengths.includes(segment.stockLength))).toBe(true)
     expect(segments.every((segment) => segment.stockLength <= Math.max(...parameters.stockLengths))).toBe(true)
-    expect(layout.connectors.filter((connector) => connector.type === 'splice' && connector.memberId === post.id)).toHaveLength((segments.length - 1) * 2)
+    expect(layout.connectors.filter((connector) => connector.type === 'inline' && connector.memberId === post.id)).toHaveLength((segments.length - 1) * 2)
     expect(Math.max(...segments.map((segment) => segment.end[1]))).toBeGreaterThan(parameters.height)
     const plan = layout.materials.assemblyPlans.find((assembly) => assembly.memberId === post.id)!
     expect(plan.effectiveLength).toBe(
@@ -73,12 +76,38 @@ describe('calculateScaffold', () => {
     expect(layout.materials.pendingMaterialSummary.brace).toBeNull()
   })
 
+  it('does not generate transverse members on shared path corners', () => {
+    const layout = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
+    const corner = [3.6, DEFAULT_PARAMETERS.liftHeight, 0]
+    const cornerTransverse = layout.members.filter((member) =>
+      member.type === 'transverse' && member.connectionPoints.some((point) =>
+        point.every((value, index) => value === corner[index])))
+
+    expect(cornerTransverse).toHaveLength(0)
+  })
+
+  it('keeps rendered connector positions unique', () => {
+    const layout = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
+    const positions = layout.connectors.map((connector) => connector.position.join(':'))
+
+    expect(new Set(positions).size).toBe(positions.length)
+  })
+
+  it('does not emit physically identical pipe segments', () => {
+    const layout = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
+    const segmentKeys = layout.pipeSegments.map((segment) =>
+      [segment.start.join(':'), segment.end.join(':')].sort().join('|'))
+
+    expect(new Set(segmentKeys).size).toBe(segmentKeys.length)
+  })
+
   it('accepts legacy parameter objects without newly added fields', () => {
-    const legacy = { ...DEFAULT_PARAMETERS } as Partial<typeof DEFAULT_PARAMETERS>
-    delete legacy.rowCount
+    const legacy = { ...DEFAULT_PARAMETERS, rowCount: 3 } as Partial<typeof DEFAULT_PARAMETERS> & { rowCount: number }
+    delete legacy.deckSupportRailCount
     delete legacy.tubeEndExtension
 
     const layout = calculateScaffold(points.slice(0, 2), [3.6], legacy as typeof DEFAULT_PARAMETERS)
     expect(countMembers(layout).post).toBe(6)
+    expect(countMembers(layout).longitudinal).toBe(15)
   })
 })

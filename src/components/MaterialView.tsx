@@ -6,8 +6,9 @@ type MaterialViewProps = {
 }
 
 const connectorLabels = {
-  rightAngle: '直角扣件',
-  splice: '搭接扣件',
+  cross: '十字扣',
+  universal: '万向扣',
+  inline: '一字扣',
 }
 
 export function MaterialView({ layout }: MaterialViewProps) {
@@ -18,7 +19,7 @@ export function MaterialView({ layout }: MaterialViewProps) {
       ['类别', '规格', '数量', '单位'],
       ...Object.entries(materials.stockSummary).map(([length, quantity]) => ['钢管', length, quantity, '根']),
       ...Object.entries(materials.connectorSummary).map(([type, quantity]) => [
-        '扣件', connectorLabels[type as keyof typeof connectorLabels], quantity, '个',
+        '扣件', connectorLabels[type as keyof typeof connectorLabels], quantity ?? '--', '个',
       ]),
       ['待定材料', '剪刀撑', materials.pendingMaterialSummary.brace ?? '--', '根'],
       ['铺设材料', '钢笆片', materials.deckCount, '片'],
@@ -59,7 +60,7 @@ export function MaterialView({ layout }: MaterialViewProps) {
           <div className="section-title"><div><span className="field-caption">CONNECTORS & DECK</span><h2>扣件与钢笆</h2></div></div>
           <div className="connector-list">
             {Object.entries(materials.connectorSummary).map(([type, quantity]) => (
-              <div key={type}><span className={`connector-icon ${type}`}><i /><i /></span><span>{connectorLabels[type as keyof typeof connectorLabels]}</span><strong>{quantity}</strong><small>个</small></div>
+              <div key={type}><span className={`connector-icon ${type}`}><i /><i /></span><span>{connectorLabels[type as keyof typeof connectorLabels]}</span><strong>{quantity ?? '--'}</strong><small>个</small></div>
             ))}
             <div><span className="pending-material-icon">?</span><span>剪刀撑</span><strong>{materials.pendingMaterialSummary.brace ?? '--'}</strong><small>根</small></div>
             <div>

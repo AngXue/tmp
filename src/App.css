@@ -196,8 +196,9 @@
 .connector-icon { position: relative; display: block; width: 24px; height: 24px; }
 .connector-icon i { position: absolute; left: 3px; top: 10px; width: 19px; height: 4px; background: #536568; }
 .connector-icon i:last-child { transform: rotate(90deg); }
-.connector-icon.splice i:last-child { transform: rotate(0) translateY(7px); }
-.connector-icon.splice i { border-left: 4px solid var(--orange); border-right: 4px solid var(--orange); }
+.connector-icon.universal i:last-child { transform: rotate(45deg); }
+.connector-icon.inline i:last-child { transform: rotate(0) translateY(7px); }
+.connector-icon.inline i { border-left: 4px solid var(--orange); border-right: 4px solid var(--orange); }
 .pending-material-icon { width: 24px; height: 24px; display: grid; place-items: center; color: #8a671f; border: 1px dashed #b8954c; font: 700 12px monospace; }
 .deck-material-icon { width: 24px; height: 18px; border: 1px solid #536568; background: repeating-linear-gradient(0deg, transparent, transparent 4px, #758689 4px, #758689 5px), repeating-linear-gradient(90deg, transparent, transparent 5px, #758689 5px, #758689 6px); transform: skewY(-8deg); }
 .connector-list > div > span:nth-child(2) small { display: block; margin-top: 2px; color: var(--muted); font: 8px monospace; }

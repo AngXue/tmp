@@ -48,9 +48,16 @@ function loadStoredProject() {
     const project = JSON.parse(stored) as {
       points: Point2D[]
       lengths: number[]
-      parameters: Partial<ScaffoldParameters>
+      parameters: Partial<ScaffoldParameters> & { rowCount?: number }
     }
-    return { ...project, parameters: { ...DEFAULT_PARAMETERS, ...project.parameters } }
+    return {
+      ...project,
+      parameters: {
+        ...DEFAULT_PARAMETERS,
+        ...project.parameters,
+        deckSupportRailCount: project.parameters.deckSupportRailCount ?? project.parameters.rowCount ?? DEFAULT_PARAMETERS.deckSupportRailCount,
+      },
+    }
   } catch {
     return null
   }
@@ -178,7 +185,7 @@ function App() {
             <div className="parameter-grid">
               <NumberField label="搭设高度" value={parameters.height} onChange={(value) => updateParameter('height', value)} />
               <NumberField label="脚手架宽度" value={parameters.width} onChange={(value) => updateParameter('width', value)} />
-              <NumberField label="架体排数" value={parameters.rowCount} unit="排" step={1} min={2} max={4} onChange={(value) => updateParameter('rowCount', Math.round(value))} />
+              <NumberField label="钢笆纵向杆数" value={parameters.deckSupportRailCount} unit="根" step={1} min={2} max={4} onChange={(value) => updateParameter('deckSupportRailCount', Math.round(value))} />
               <NumberField label="立杆纵距" value={parameters.postSpacing} onChange={(value) => updateParameter('postSpacing', value)} />
               <NumberField label="步距" value={parameters.liftHeight} onChange={(value) => updateParameter('liftHeight', value)} />
               <NumberField label="管端外伸" value={parameters.tubeEndExtension} step={0.05} min={0} max={0.5} onChange={(value) => updateParameter('tubeEndExtension', value)} />

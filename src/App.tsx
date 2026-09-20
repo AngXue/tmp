@@ -14,6 +14,7 @@ import {
 import './App.css'
 import { MaterialView } from './components/MaterialView'
 import { PlanEditor } from './components/PlanEditor'
+import { PIXELS_PER_METER } from './domain/plan'
 import {
   calculateScaffold,
   countMembers,
@@ -30,8 +31,8 @@ const ScaffoldViewer = lazy(() => import('./components/ScaffoldViewer').then((mo
 
 const INITIAL_POINTS: Point2D[] = [
   { id: 'P1', x: 110, y: 125 },
-  { id: 'P2', x: 520, y: 125 },
-  { id: 'P3', x: 520, y: 380 },
+  { id: 'P2', x: 110 + 7.2 * PIXELS_PER_METER, y: 125 },
+  { id: 'P3', x: 110 + 7.2 * PIXELS_PER_METER, y: 125 + 4.8 * PIXELS_PER_METER },
 ]
 
 const TAB_META = {
@@ -149,7 +150,7 @@ function App() {
             <div>
               <span className="eyebrow">{activeTab === 'plan' ? 'PATH INPUT' : activeTab === 'model' ? 'LAYOUT REVIEW' : 'MATERIAL OUTPUT'}</span>
               <h1>{TAB_META[activeTab].label}</h1>
-              <p>{activeTab === 'plan' ? '绘制实际搭设路径，并为每段录入现场测量值。' : activeTab === 'model' ? '旋转并点击构件，核查计算生成的空间关系。' : '查看钢管下料、利用率与扣件需求。'}</p>
+              <p>{activeTab === 'plan' ? '绘制实际搭设路径，画布尺寸与现场测量值保持同步。' : activeTab === 'model' ? '旋转并点击标准钢管段，核查组合、搭接与空间关系。' : '查看标准管组管、利用率与扣件需求。'}</p>
             </div>
             <span className="calculation-badge"><i /> 计算结果已同步</span>
           </div>
@@ -182,28 +183,18 @@ function App() {
               <NumberField label="步距" value={parameters.liftHeight} onChange={(value) => updateParameter('liftHeight', value)} />
               <NumberField label="管端外伸" value={parameters.tubeEndExtension} step={0.05} min={0} max={0.5} onChange={(value) => updateParameter('tubeEndExtension', value)} />
               <NumberField label="立杆顶端外伸" value={parameters.postTopExtension} step={0.1} min={0} max={2} onChange={(value) => updateParameter('postTopExtension', value)} />
+              <NumberField label="钢管搭接长度" value={parameters.spliceOverlap} step={0.1} min={0.2} max={1.5} onChange={(value) => updateParameter('spliceOverlap', value)} />
               <NumberField label="钢笆铺设间隔" value={parameters.deckLiftInterval} unit="层" step={1} min={1} max={6} onChange={(value) => updateParameter('deckLiftInterval', Math.round(value))} />
             </div>
           </div>
-          <div className="parameter-section rule-section">
-            <h2>规则配置</h2>
-            <label className="range-row">
-              <span>剪刀撑跨数 <b>{parameters.braceBayCount}</b></span>
-              <input type="range" min="2" max="6" value={parameters.braceBayCount} onChange={(event) => updateParameter('braceBayCount', Number(event.target.value))} />
-            </label>
-            <label className="range-row">
-              <span>连墙件水平跨 <b>{parameters.wallTieHorizontalBays}</b></span>
-              <input type="range" min="2" max="6" value={parameters.wallTieHorizontalBays} onChange={(event) => updateParameter('wallTieHorizontalBays', Number(event.target.value))} />
-            </label>
-          </div>
 
           <div className="live-summary">
-            <div className="summary-title"><span>实时估算</span><small>{layout.members.length} 根钢管</small></div>
+            <div className="summary-title"><span>实时估算</span><small>{layout.pipeSegments.length} 根标准管</small></div>
             <div className="summary-grid">
               <div><span>立杆</span><strong>{counts.post}</strong></div>
               <div><span>水平杆</span><strong>{counts.longitudinal}</strong></div>
               <div><span>横向杆</span><strong>{counts.transverse}</strong></div>
-              <div><span>剪刀撑</span><strong>{counts.brace}</strong></div>
+              <div><span>剪刀撑</span><strong>--</strong></div>
             </div>
             <div className="utilization-row"><span>钢管利用率</span><strong>{layout.materials.utilization}%</strong></div>
             <div className="utilization-track"><i style={{ width: `${layout.materials.utilization}%` }} /></div>

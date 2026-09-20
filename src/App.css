@@ -135,8 +135,9 @@
 .node-label-bg { fill: rgba(255, 255, 255, 0.96); stroke: #aebabc; stroke-width: 1; }
 .node-label { fill: #324146; font: 700 12px monospace; user-select: none; }
 .snap-guide { stroke: var(--orange); stroke-width: 1.5; stroke-dasharray: 7 5; pointer-events: none; }
-.scale-indicator { position: absolute; right: 18px; bottom: 14px; display: flex; align-items: center; gap: 8px; color: #687579; font: 10px monospace; }
-.scale-indicator span { width: 62px; height: 8px; border: solid #6c7b7e; border-width: 0 1px 1px; }
+.scale-indicator-svg { color: #687579; pointer-events: none; }
+.scale-indicator-svg path { fill: none; stroke: currentColor; stroke-width: 1; }
+.scale-indicator-svg text { fill: currentColor; font: 10px monospace; }
 .segment-strip { min-height: 78px; padding: 11px 18px; display: grid; grid-template-columns: 160px 240px 1fr; align-items: center; gap: 20px; border-top: 1px solid var(--line); }
 .segment-strip > div { display: grid; gap: 5px; }
 .segment-strip strong { font-size: 13px; }
@@ -195,9 +196,9 @@
 .connector-icon { position: relative; display: block; width: 24px; height: 24px; }
 .connector-icon i { position: absolute; left: 3px; top: 10px; width: 19px; height: 4px; background: #536568; }
 .connector-icon i:last-child { transform: rotate(90deg); }
-.connector-icon.swivel i:last-child { transform: rotate(45deg); }
-.connector-icon.butt i:last-child { display: none; }
-.connector-icon.butt i { border-left: 5px solid var(--orange); border-right: 5px solid var(--orange); }
+.connector-icon.splice i:last-child { transform: rotate(0) translateY(7px); }
+.connector-icon.splice i { border-left: 4px solid var(--orange); border-right: 4px solid var(--orange); }
+.pending-material-icon { width: 24px; height: 24px; display: grid; place-items: center; color: #8a671f; border: 1px dashed #b8954c; font: 700 12px monospace; }
 .deck-material-icon { width: 24px; height: 18px; border: 1px solid #536568; background: repeating-linear-gradient(0deg, transparent, transparent 4px, #758689 4px, #758689 5px), repeating-linear-gradient(90deg, transparent, transparent 5px, #758689 5px, #758689 6px); transform: skewY(-8deg); }
 .connector-list > div > span:nth-child(2) small { display: block; margin-top: 2px; color: var(--muted); font: 8px monospace; }
 .cutting-section { margin-top: 14px; }

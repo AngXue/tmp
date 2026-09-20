@@ -39,13 +39,38 @@ describe('calculateScaffold', () => {
     expect(layout.materials.deckCount).toBe(layout.decks.length)
   })
 
-  it('keeps brace coverage continuous from the base to the top lift', () => {
-    const layout = calculateScaffold(points.slice(0, 2), [5.4], DEFAULT_PARAMETERS)
-    const braces = layout.members.filter((member) => member.type === 'brace')
-    const highestBracePoint = Math.max(...braces.flatMap((brace) => [brace.start[1], brace.end[1]]))
+  it('splits tall posts into overlapping standard stock pipes', () => {
+    const parameters = { ...DEFAULT_PARAMETERS, height: 12.4 }
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], parameters)
+    const post = layout.members.find((member) => member.type === 'post')!
+    const segments = layout.pipeSegments.filter((segment) => segment.memberId === post.id)
 
-    expect(braces.length).toBeGreaterThan(2)
-    expect(highestBracePoint).toBeGreaterThanOrEqual(DEFAULT_PARAMETERS.height)
+    expect(segments.length).toBeGreaterThan(1)
+    expect(segments.every((segment) => parameters.stockLengths.includes(segment.stockLength))).toBe(true)
+    expect(segments.every((segment) => segment.stockLength <= Math.max(...parameters.stockLengths))).toBe(true)
+    expect(layout.connectors.filter((connector) => connector.type === 'splice' && connector.memberId === post.id)).toHaveLength((segments.length - 1) * 2)
+    expect(Math.max(...segments.map((segment) => segment.end[1]))).toBeGreaterThan(parameters.height)
+    const plan = layout.materials.assemblyPlans.find((assembly) => assembly.memberId === post.id)!
+    expect(plan.effectiveLength).toBe(
+      plan.stockLengths.reduce((sum, length) => sum + length, 0) - parameters.spliceOverlap * (plan.stockLengths.length - 1),
+    )
+  })
+
+  it('treats a long longitudinal run as one assembly of stock pipes', () => {
+    const layout = calculateScaffold(points.slice(0, 2), [7.2], DEFAULT_PARAMETERS)
+    const longitudinal = layout.members.find((member) => member.type === 'longitudinal')!
+    const segments = layout.pipeSegments.filter((segment) => segment.memberId === longitudinal.id)
+
+    expect(longitudinal.length).toBeGreaterThan(Math.max(...DEFAULT_PARAMETERS.stockLengths))
+    expect(segments.length).toBeGreaterThan(1)
+    expect(segments[1].overlapWithPrevious).toBe(DEFAULT_PARAMETERS.spliceOverlap)
+  })
+
+  it('excludes wall ties and leaves braces pending outside the layout', () => {
+    const layout = calculateScaffold(points, [3.6, 3.6], DEFAULT_PARAMETERS)
+
+    expect(layout.members.every((member) => ['post', 'longitudinal', 'transverse'].includes(member.type))).toBe(true)
+    expect(layout.materials.pendingMaterialSummary.brace).toBeNull()
   })
 
   it('accepts legacy parameter objects without newly added fields', () => {

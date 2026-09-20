@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Magnet, Maximize2, Minimize2, MousePointer2, Plus, RotateCcw } from 'lucide-react'
 import type { Point2D } from '../domain/scaffold'
+import { GRID_SIZE, measurePath, PIXELS_PER_METER, resizePathSegment } from '../domain/plan'
 
 type PlanEditorProps = {
   points: Point2D[]
@@ -11,7 +12,6 @@ type PlanEditorProps = {
 
 const VIEWBOX_WIDTH = 720
 const VIEWBOX_HEIGHT = 500
-const GRID_SIZE = 20
 const ALIGN_THRESHOLD = 12
 
 export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }: PlanEditorProps) {
@@ -66,9 +66,11 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
     }
 
     setSnapGuide(guide)
-    onPointsChange(points.map((point) => point.id === draggingId
+    const nextPoints = points.map((point) => point.id === draggingId
       ? { ...point, x: Math.max(34, Math.min(686, next.x)), y: Math.max(34, Math.min(466, next.y)) }
-      : point))
+      : point)
+    onPointsChange(nextPoints)
+    onLengthsChange(measurePath(nextPoints))
   }
 
   const stopDragging = () => {
@@ -86,21 +88,24 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
 
   const addSegment = () => {
     const last = points.at(-1) ?? { x: 120, y: 160 }
-    const direction = points.length % 2 === 0 ? { x: 0, y: 130 } : { x: 150, y: 0 }
+    const length = 4.2
+    const direction = points.length % 2 === 0
+      ? { x: 0, y: length * PIXELS_PER_METER }
+      : { x: length * PIXELS_PER_METER, y: 0 }
     onPointsChange([...points, {
       id: `P${points.length + 1}`,
       x: Math.min(670, last.x + direction.x),
       y: Math.min(450, last.y + direction.y),
     }])
-    onLengthsChange([...lengths, 4.2])
+    onLengthsChange([...lengths, length])
     setSelectedSegment(lengths.length)
   }
 
   const reset = () => {
     onPointsChange([
       { id: 'P1', x: 110, y: 125 },
-      { id: 'P2', x: 520, y: 125 },
-      { id: 'P3', x: 520, y: 380 },
+      { id: 'P2', x: 110 + 7.2 * PIXELS_PER_METER, y: 125 },
+      { id: 'P3', x: 110 + 7.2 * PIXELS_PER_METER, y: 125 + 4.8 * PIXELS_PER_METER },
     ])
     onLengthsChange([7.2, 4.8])
     setSelectedSegment(0)
@@ -130,12 +135,12 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
           onPointerLeave={stopDragging}
         >
           <defs>
-            <pattern id="minor-grid" width="20" height="20" patternUnits="userSpaceOnUse">
-              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#d8dfe2" strokeWidth="0.7" />
+            <pattern id="minor-grid" width={GRID_SIZE} height={GRID_SIZE} patternUnits="userSpaceOnUse">
+              <path d={`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`} fill="none" stroke="#d8dfe2" strokeWidth="0.7" />
             </pattern>
-            <pattern id="major-grid" width="100" height="100" patternUnits="userSpaceOnUse">
-              <rect width="100" height="100" fill="url(#minor-grid)" />
-              <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#c0cbd0" strokeWidth="1" />
+            <pattern id="major-grid" width={GRID_SIZE * 4} height={GRID_SIZE * 4} patternUnits="userSpaceOnUse">
+              <rect width={GRID_SIZE * 4} height={GRID_SIZE * 4} fill="url(#minor-grid)" />
+              <path d={`M ${GRID_SIZE * 4} 0 L 0 0 0 ${GRID_SIZE * 4}`} fill="none" stroke="#c0cbd0" strokeWidth="1" />
             </pattern>
           </defs>
           <rect width="100%" height="100%" fill="url(#major-grid)" />
@@ -172,8 +177,11 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
               <text y="-24" textAnchor="middle" className="node-label">{point.id}</text>
             </g>
           ))}
+          <g transform={`translate(${VIEWBOX_WIDTH - PIXELS_PER_METER - 34}, ${VIEWBOX_HEIGHT - 28})`} className="scale-indicator-svg">
+            <path d={`M 0 -8 V 0 H ${PIXELS_PER_METER} V -8`} />
+            <text x={PIXELS_PER_METER / 2} y="15" textAnchor="middle">1 m</text>
+          </g>
         </svg>
-        <div className="scale-indicator"><span /> 1 m 参考</div>
       </div>
 
       <div className="segment-strip">
@@ -189,13 +197,17 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
               min="0.1"
               step="0.1"
               value={lengths[selectedSegment] ?? 0}
-              onChange={(event) => onLengthsChange(lengths.map((length, index) =>
-                index === selectedSegment ? Math.max(0.1, Number(event.target.value)) : length))}
+              onChange={(event) => {
+                const value = Math.max(0.1, Number(event.target.value))
+                const nextPoints = resizePathSegment(points, selectedSegment, value)
+                onPointsChange(nextPoints)
+                onLengthsChange(measurePath(nextPoints))
+              }}
             />
             <b>m</b>
           </span>
         </label>
-        <span className="authority-note">此数值用于计算，画布比例仅作示意</span>
+        <span className="authority-note">画布与测量值同步，细网格为 0.5 m</span>
       </div>
     </div>
   )

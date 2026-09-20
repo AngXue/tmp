@@ -7,8 +7,7 @@ type MaterialViewProps = {
 
 const connectorLabels = {
   rightAngle: '直角扣件',
-  swivel: '旋转扣件',
-  butt: '对接扣件',
+  splice: '搭接扣件',
 }
 
 export function MaterialView({ layout }: MaterialViewProps) {
@@ -21,6 +20,7 @@ export function MaterialView({ layout }: MaterialViewProps) {
       ...Object.entries(materials.connectorSummary).map(([type, quantity]) => [
         '扣件', connectorLabels[type as keyof typeof connectorLabels], quantity, '个',
       ]),
+      ['待定材料', '剪刀撑', materials.pendingMaterialSummary.brace ?? '--', '根'],
       ['铺设材料', '钢笆片', materials.deckCount, '片'],
       ['铺设材料', '钢笆覆盖面积', materials.deckArea, 'm²'],
     ]
@@ -38,7 +38,7 @@ export function MaterialView({ layout }: MaterialViewProps) {
       <div className="material-kpis">
         <div><span>理论需求</span><strong>{materials.theoreticalLength.toFixed(1)}<small> m</small></strong></div>
         <div><span>采购总长</span><strong>{materials.purchasedLength.toFixed(1)}<small> m</small></strong></div>
-        <div><span>预计余料</span><strong>{materials.wasteLength.toFixed(1)}<small> m</small></strong></div>
+        <div><span>搭接及富余</span><strong>{materials.wasteLength.toFixed(1)}<small> m</small></strong></div>
         <div className="accent-kpi"><span>综合利用率</span><strong>{materials.utilization}<small> %</small></strong></div>
       </div>
 
@@ -61,6 +61,7 @@ export function MaterialView({ layout }: MaterialViewProps) {
             {Object.entries(materials.connectorSummary).map(([type, quantity]) => (
               <div key={type}><span className={`connector-icon ${type}`}><i /><i /></span><span>{connectorLabels[type as keyof typeof connectorLabels]}</span><strong>{quantity}</strong><small>个</small></div>
             ))}
+            <div><span className="pending-material-icon">?</span><span>剪刀撑</span><strong>{materials.pendingMaterialSummary.brace ?? '--'}</strong><small>根</small></div>
             <div>
               <span className="deck-material-icon" />
               <span>钢笆片 <small>{materials.deckArea.toFixed(1)} m²</small></span>
@@ -73,21 +74,20 @@ export function MaterialView({ layout }: MaterialViewProps) {
 
       <section className="cutting-section">
         <div className="section-title">
-          <div><span className="field-caption">CUTTING PLAN</span><h2>下料方案</h2></div>
-          <span className="cutting-note"><Scissors size={15} /> 优先适配最短可用标准管</span>
+          <div><span className="field-caption">PIPE ASSEMBLY</span><h2>标准管组管方案</h2></div>
+          <span className="cutting-note"><Scissors size={15} /> 少接头优先 · 搭接计入用量</span>
         </div>
         <div className="cut-plan-table">
-          <div className="cut-table-head"><span>原材</span><span>切割组合</span><span>余料</span></div>
-          {materials.cutPlans.slice(0, 8).map((plan, index) => (
-            <div className="cut-table-row" key={`${plan.stockLength}-${index}`}>
-              <strong>{plan.stockLength.toFixed(1)} m</strong>
+          <div className="cut-table-head"><span>构件</span><span>标准管组合</span><span>额外外伸</span></div>
+          {materials.assemblyPlans.slice(0, 8).map((plan) => (
+            <div className="cut-table-row" key={plan.memberId}>
+              <strong>{plan.memberId}</strong>
               <div className="cut-bar">
-                {plan.cuts.map((cut, cutIndex) => (
-                  <i key={`${cut}-${cutIndex}`} style={{ flex: cut }}><span>{cut.toFixed(2)}</span></i>
+                {plan.stockLengths.map((stockLength, segmentIndex) => (
+                  <i key={`${stockLength}-${segmentIndex}`} style={{ flex: stockLength }}><span>{stockLength.toFixed(1)}m</span></i>
                 ))}
-                {plan.remainder > 0.01 && <em style={{ flex: plan.remainder }} />}
               </div>
-              <span>{plan.remainder.toFixed(2)} m</span>
+              <span>{plan.excessLength.toFixed(2)} m</span>
             </div>
           ))}
         </div>

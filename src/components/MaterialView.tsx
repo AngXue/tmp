@@ -21,6 +21,8 @@ export function MaterialView({ layout }: MaterialViewProps) {
       ...Object.entries(materials.connectorSummary).map(([type, quantity]) => [
         '扣件', connectorLabels[type as keyof typeof connectorLabels], quantity, '个',
       ]),
+      ['铺设材料', '钢笆片', materials.deckCount, '片'],
+      ['铺设材料', '钢笆覆盖面积', materials.deckArea, 'm²'],
     ]
     const csv = `\uFEFF${rows.map((row) => row.join(',')).join('\n')}`
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
@@ -54,11 +56,17 @@ export function MaterialView({ layout }: MaterialViewProps) {
         </section>
 
         <section className="material-section">
-          <div className="section-title"><div><span className="field-caption">CONNECTORS</span><h2>扣件</h2></div></div>
+          <div className="section-title"><div><span className="field-caption">CONNECTORS & DECK</span><h2>扣件与钢笆</h2></div></div>
           <div className="connector-list">
             {Object.entries(materials.connectorSummary).map(([type, quantity]) => (
               <div key={type}><span className={`connector-icon ${type}`}><i /><i /></span><span>{connectorLabels[type as keyof typeof connectorLabels]}</span><strong>{quantity}</strong><small>个</small></div>
             ))}
+            <div>
+              <span className="deck-material-icon" />
+              <span>钢笆片 <small>{materials.deckArea.toFixed(1)} m²</small></span>
+              <strong>{materials.deckCount}</strong>
+              <small>片</small>
+            </div>
           </div>
         </section>
       </div>

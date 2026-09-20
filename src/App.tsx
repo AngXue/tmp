@@ -18,7 +18,6 @@ import {
   calculateScaffold,
   countMembers,
   DEFAULT_PARAMETERS,
-  type MemberType,
   type Point2D,
   type ScaffoldParameters,
 } from './domain/scaffold'
@@ -45,21 +44,24 @@ function loadStoredProject() {
   try {
     const stored = localStorage.getItem('scaffold-project')
     if (!stored) return null
-    return JSON.parse(stored) as {
+    const project = JSON.parse(stored) as {
       points: Point2D[]
       lengths: number[]
-      parameters: ScaffoldParameters
+      parameters: Partial<ScaffoldParameters>
     }
+    return { ...project, parameters: { ...DEFAULT_PARAMETERS, ...project.parameters } }
   } catch {
     return null
   }
 }
 
-function NumberField({ label, value, unit = 'm', step = 0.1, onChange }: {
+function NumberField({ label, value, unit = 'm', step = 0.1, min = 0.1, max, onChange }: {
   label: string
   value: number
   unit?: string
   step?: number
+  min?: number
+  max?: number
   onChange: (value: number) => void
 }) {
   return (
@@ -68,10 +70,11 @@ function NumberField({ label, value, unit = 'm', step = 0.1, onChange }: {
       <span className="number-input">
         <input
           type="number"
-          min="0.1"
+          min={min}
+          max={max}
           step={step}
           value={value}
-          onChange={(event) => onChange(Math.max(0.1, Number(event.target.value)))}
+          onChange={(event) => onChange(Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min, Number(event.target.value))))}
         />
         <b>{unit}</b>
       </span>
@@ -85,7 +88,6 @@ function App() {
   const [points, setPoints] = useState<Point2D[]>(initialProject?.points ?? INITIAL_POINTS)
   const [lengths, setLengths] = useState(initialProject?.lengths ?? [7.2, 4.8])
   const [parameters, setParameters] = useState<ScaffoldParameters>(initialProject?.parameters ?? DEFAULT_PARAMETERS)
-  const [filter, setFilter] = useState<MemberType | 'all'>('all')
   const [saved, setSaved] = useState(false)
 
   const layout = calculateScaffold(points, lengths, parameters)
@@ -162,7 +164,7 @@ function App() {
           )}
           {activeTab === 'model' && (
             <Suspense fallback={<div className="viewer-loading">正在加载三维引擎…</div>}>
-              <ScaffoldViewer layout={layout} filter={filter} onFilterChange={setFilter} />
+              <ScaffoldViewer layout={layout} />
             </Suspense>
           )}
           {activeTab === 'materials' && <MaterialView layout={layout} />}
@@ -175,8 +177,12 @@ function App() {
             <div className="parameter-grid">
               <NumberField label="搭设高度" value={parameters.height} onChange={(value) => updateParameter('height', value)} />
               <NumberField label="脚手架宽度" value={parameters.width} onChange={(value) => updateParameter('width', value)} />
+              <NumberField label="架体排数" value={parameters.rowCount} unit="排" step={1} min={2} max={4} onChange={(value) => updateParameter('rowCount', Math.round(value))} />
               <NumberField label="立杆纵距" value={parameters.postSpacing} onChange={(value) => updateParameter('postSpacing', value)} />
               <NumberField label="步距" value={parameters.liftHeight} onChange={(value) => updateParameter('liftHeight', value)} />
+              <NumberField label="管端外伸" value={parameters.tubeEndExtension} step={0.05} min={0} max={0.5} onChange={(value) => updateParameter('tubeEndExtension', value)} />
+              <NumberField label="立杆顶端外伸" value={parameters.postTopExtension} step={0.1} min={0} max={2} onChange={(value) => updateParameter('postTopExtension', value)} />
+              <NumberField label="钢笆铺设间隔" value={parameters.deckLiftInterval} unit="层" step={1} min={1} max={6} onChange={(value) => updateParameter('deckLiftInterval', Math.round(value))} />
             </div>
           </div>
           <div className="parameter-section rule-section">
@@ -192,7 +198,7 @@ function App() {
           </div>
 
           <div className="live-summary">
-            <div className="summary-title"><span>实时估算</span><small>{layout.members.length} 个构件</small></div>
+            <div className="summary-title"><span>实时估算</span><small>{layout.members.length} 根钢管</small></div>
             <div className="summary-grid">
               <div><span>立杆</span><strong>{counts.post}</strong></div>
               <div><span>水平杆</span><strong>{counts.longitudinal}</strong></div>

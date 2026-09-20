@@ -1,5 +1,5 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Focus, MousePointer2, Plus, RotateCcw } from 'lucide-react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { Magnet, Maximize2, Minimize2, MousePointer2, Plus, RotateCcw } from 'lucide-react'
 import type { Point2D } from '../domain/scaffold'
 
 type PlanEditorProps = {
@@ -11,27 +11,77 @@ type PlanEditorProps = {
 
 const VIEWBOX_WIDTH = 720
 const VIEWBOX_HEIGHT = 500
+const GRID_SIZE = 20
+const ALIGN_THRESHOLD = 12
 
 export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }: PlanEditorProps) {
+  const editorRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [selectedSegment, setSelectedSegment] = useState(0)
+  const [snapEnabled, setSnapEnabled] = useState(true)
+  const [snapGuide, setSnapGuide] = useState<{ x?: number; y?: number }>({})
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  useEffect(() => {
+    const handleFullscreen = () => setIsFullscreen(document.fullscreenElement === editorRef.current)
+    document.addEventListener('fullscreenchange', handleFullscreen)
+    return () => document.removeEventListener('fullscreenchange', handleFullscreen)
+  }, [])
 
   const toSvgPoint = (event: ReactPointerEvent<SVGSVGElement>) => {
     const rect = svgRef.current?.getBoundingClientRect()
     if (!rect) return { x: 0, y: 0 }
+    const scale = Math.min(rect.width / VIEWBOX_WIDTH, rect.height / VIEWBOX_HEIGHT)
+    const offsetX = (rect.width - VIEWBOX_WIDTH * scale) / 2
+    const offsetY = (rect.height - VIEWBOX_HEIGHT * scale) / 2
     return {
-      x: ((event.clientX - rect.left) / rect.width) * VIEWBOX_WIDTH,
-      y: ((event.clientY - rect.top) / rect.height) * VIEWBOX_HEIGHT,
+      x: (event.clientX - rect.left - offsetX) / scale,
+      y: (event.clientY - rect.top - offsetY) / scale,
     }
   }
 
   const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (!draggingId) return
-    const next = toSvgPoint(event)
+    const raw = toSvgPoint(event)
+    let next = raw
+    const guide: { x?: number; y?: number } = {}
+
+    if (snapEnabled) {
+      next = {
+        x: Math.round(raw.x / GRID_SIZE) * GRID_SIZE,
+        y: Math.round(raw.y / GRID_SIZE) * GRID_SIZE,
+      }
+      for (const point of points) {
+        if (point.id === draggingId) continue
+        if (Math.abs(raw.x - point.x) <= ALIGN_THRESHOLD) {
+          next.x = point.x
+          guide.x = point.x
+        }
+        if (Math.abs(raw.y - point.y) <= ALIGN_THRESHOLD) {
+          next.y = point.y
+          guide.y = point.y
+        }
+      }
+    }
+
+    setSnapGuide(guide)
     onPointsChange(points.map((point) => point.id === draggingId
       ? { ...point, x: Math.max(34, Math.min(686, next.x)), y: Math.max(34, Math.min(466, next.y)) }
       : point))
+  }
+
+  const stopDragging = () => {
+    setDraggingId(null)
+    setSnapGuide({})
+  }
+
+  const toggleFullscreen = async () => {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen()
+    } else {
+      await editorRef.current?.requestFullscreen()
+    }
   }
 
   const addSegment = () => {
@@ -57,12 +107,15 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
   }
 
   return (
-    <div className="plan-editor">
+    <div className="plan-editor" ref={editorRef}>
       <div className="canvas-toolbar">
-        <div className="tool-status"><MousePointer2 size={16} /> 拖动节点调整路径</div>
+        <div className="tool-status"><MousePointer2 size={16} /> 拖动节点 · {snapEnabled ? '吸附已开启' : '自由移动'}</div>
         <div className="toolbar-actions">
           <button className="icon-button" type="button" onClick={reset} title="重置示例路径"><RotateCcw size={18} /></button>
-          <button className="icon-button" type="button" title="适应画布"><Focus size={18} /></button>
+          <button className={snapEnabled ? 'icon-button active' : 'icon-button'} type="button" onClick={() => setSnapEnabled(!snapEnabled)} title="网格与同轴吸附"><Magnet size={18} /></button>
+          <button className="icon-button" type="button" onClick={toggleFullscreen} title={isFullscreen ? '退出全屏' : '全屏画布'}>
+            {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+          </button>
           <button className="compact-button" type="button" onClick={addSegment}><Plus size={17} /> 添加路径段</button>
         </div>
       </div>
@@ -73,8 +126,8 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
           className="plan-canvas"
           viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
           onPointerMove={handlePointerMove}
-          onPointerUp={() => setDraggingId(null)}
-          onPointerLeave={() => setDraggingId(null)}
+          onPointerUp={stopDragging}
+          onPointerLeave={stopDragging}
         >
           <defs>
             <pattern id="minor-grid" width="20" height="20" patternUnits="userSpaceOnUse">
@@ -86,6 +139,8 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
             </pattern>
           </defs>
           <rect width="100%" height="100%" fill="url(#major-grid)" />
+          {snapGuide.x !== undefined && <line x1={snapGuide.x} y1="0" x2={snapGuide.x} y2={VIEWBOX_HEIGHT} className="snap-guide" />}
+          {snapGuide.y !== undefined && <line x1="0" y1={snapGuide.y} x2={VIEWBOX_WIDTH} y2={snapGuide.y} className="snap-guide" />}
           {points.slice(0, -1).map((point, index) => {
             const next = points[index + 1]
             const midpoint = { x: (point.x + next.x) / 2, y: (point.y + next.y) / 2 }
@@ -113,7 +168,8 @@ export function PlanEditor({ points, lengths, onPointsChange, onLengthsChange }:
             >
               <circle r="14" className="node-hit" />
               <circle r="7" className="node-dot" />
-              <text y="-20" textAnchor="middle" className="node-label">{point.id}</text>
+              <rect x="-17" y="-38" width="34" height="20" rx="3" className="node-label-bg" />
+              <text y="-24" textAnchor="middle" className="node-label">{point.id}</text>
             </g>
           ))}
         </svg>

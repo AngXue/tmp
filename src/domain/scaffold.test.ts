@@ -26,4 +26,34 @@ describe('calculateScaffold', () => {
     expect(layout.materials.purchasedLength).toBeGreaterThanOrEqual(memberLength)
     expect(layout.materials.utilization).toBeGreaterThan(0)
   })
+
+  it('supports three post rows and physical tube overhangs', () => {
+    const parameters = { ...DEFAULT_PARAMETERS, rowCount: 3 }
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], parameters)
+    const transverse = layout.members.find((member) => member.type === 'transverse')
+
+    expect(countMembers(layout).post).toBe(9)
+    expect(transverse?.connectionPoints).toHaveLength(3)
+    expect(transverse?.length).toBeCloseTo(parameters.width + parameters.tubeEndExtension * 2, 3)
+    expect(layout.decks).toHaveLength(10)
+    expect(layout.materials.deckCount).toBe(layout.decks.length)
+  })
+
+  it('keeps brace coverage continuous from the base to the top lift', () => {
+    const layout = calculateScaffold(points.slice(0, 2), [5.4], DEFAULT_PARAMETERS)
+    const braces = layout.members.filter((member) => member.type === 'brace')
+    const highestBracePoint = Math.max(...braces.flatMap((brace) => [brace.start[1], brace.end[1]]))
+
+    expect(braces.length).toBeGreaterThan(2)
+    expect(highestBracePoint).toBeGreaterThanOrEqual(DEFAULT_PARAMETERS.height)
+  })
+
+  it('accepts legacy parameter objects without newly added fields', () => {
+    const legacy = { ...DEFAULT_PARAMETERS } as Partial<typeof DEFAULT_PARAMETERS>
+    delete legacy.rowCount
+    delete legacy.tubeEndExtension
+
+    const layout = calculateScaffold(points.slice(0, 2), [3.6], legacy as typeof DEFAULT_PARAMETERS)
+    expect(countMembers(layout).post).toBe(6)
+  })
 })

@@ -7,11 +7,15 @@ export type Point2D = {
 export type ScaffoldParameters = {
   height: number
   width: number
+  rowCount: number
   postSpacing: number
   liftHeight: number
+  tubeEndExtension: number
+  postTopExtension: number
   braceBayCount: number
   wallTieHorizontalBays: number
   wallTieVerticalLifts: number
+  deckLiftInterval: number
   pipeDiameter: number
   stockLengths: number[]
 }
@@ -24,9 +28,25 @@ export type ScaffoldMember = {
   type: MemberType
   start: Vector3Tuple
   end: Vector3Tuple
+  connectionPoints: Vector3Tuple[]
   length: number
   layer?: number
   pathSegment?: number
+}
+
+export type DeckPanel = {
+  id: string
+  corners: [Vector3Tuple, Vector3Tuple, Vector3Tuple, Vector3Tuple]
+  area: number
+  layer: number
+  pathSegment: number
+}
+
+export type ScaffoldConnector = {
+  id: string
+  type: 'rightAngle' | 'swivel'
+  position: Vector3Tuple
+  memberId: string
 }
 
 export type LayoutWarning = {
@@ -53,11 +73,15 @@ export type MaterialResult = {
     swivel: number
     butt: number
   }
+  deckCount: number
+  deckArea: number
   cutPlans: CutPlan[]
 }
 
 export type ScaffoldLayout = {
   members: ScaffoldMember[]
+  decks: DeckPanel[]
+  connectors: ScaffoldConnector[]
   warnings: LayoutWarning[]
   materials: MaterialResult
 }
@@ -65,11 +89,15 @@ export type ScaffoldLayout = {
 export const DEFAULT_PARAMETERS: ScaffoldParameters = {
   height: 8.4,
   width: 1.2,
+  rowCount: 2,
   postSpacing: 1.8,
   liftHeight: 1.8,
+  tubeEndExtension: 0.1,
+  postTopExtension: 0.2,
   braceBayCount: 3,
   wallTieHorizontalBays: 3,
   wallTieVerticalLifts: 2,
+  deckLiftInterval: 1,
   pipeDiameter: 0.048,
   stockLengths: [6, 5, 4, 3, 2],
 }
@@ -78,6 +106,21 @@ const round = (value: number, precision = 3) => Number(value.toFixed(precision))
 const vectorDistance = (a: Vector3Tuple, b: Vector3Tuple) =>
   Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2])
 const pointKey = (point: Vector3Tuple) => point.map((value) => round(value)).join(':')
+
+function extendLine(
+  start: Vector3Tuple,
+  end: Vector3Tuple,
+  startExtension: number,
+  endExtension: number,
+): [Vector3Tuple, Vector3Tuple] {
+  const length = vectorDistance(start, end)
+  if (length <= 0.001) return [start, end]
+  const direction = end.map((value, index) => (value - start[index]) / length) as Vector3Tuple
+  return [
+    start.map((value, index) => round(value - direction[index] * startExtension)) as Vector3Tuple,
+    end.map((value, index) => round(value + direction[index] * endExtension)) as Vector3Tuple,
+  ]
+}
 
 function getPhysicalPoints(points: Point2D[], lengths: number[]) {
   if (!points.length) return []
@@ -99,7 +142,12 @@ function getPhysicalPoints(points: Point2D[], lengths: number[]) {
   return physical
 }
 
-function optimizeCuts(members: ScaffoldMember[], stockLengths: number[]): MaterialResult {
+function optimizeCuts(
+  members: ScaffoldMember[],
+  decks: DeckPanel[],
+  connectors: ScaffoldConnector[],
+  stockLengths: number[],
+): MaterialResult {
   const stocks = [...stockLengths].sort((a, b) => b - a)
   const maximumStock = stocks[0]
   const pieces = members.flatMap((member) => {
@@ -153,10 +201,12 @@ function optimizeCuts(members: ScaffoldMember[], stockLengths: number[]): Materi
     utilization: purchasedLength ? round((theoreticalLength / purchasedLength) * 100, 1) : 0,
     stockSummary,
     connectorSummary: {
-      rightAngle: members.filter((member) => member.type === 'longitudinal' || member.type === 'transverse' || member.type === 'wallTie').length * 2,
-      swivel: members.filter((member) => member.type === 'brace').length * 2,
+      rightAngle: connectors.filter((connector) => connector.type === 'rightAngle').length,
+      swivel: connectors.filter((connector) => connector.type === 'swivel').length,
       butt: Math.max(0, splitCount),
     },
+    deckCount: decks.length,
+    deckArea: round(decks.reduce((sum, deck) => sum + deck.area, 0)),
     cutPlans: plans,
   }
 }
@@ -166,8 +216,10 @@ export function calculateScaffold(
   segmentLengths: number[],
   parameters: ScaffoldParameters,
 ): ScaffoldLayout {
+  parameters = { ...DEFAULT_PARAMETERS, ...parameters }
   const physical = getPhysicalPoints(points, segmentLengths)
   const members: ScaffoldMember[] = []
+  const decks: DeckPanel[] = []
   const warnings: LayoutWarning[] = []
   const postKeys = new Set<string>()
   let memberSequence = 1
@@ -178,16 +230,37 @@ export function calculateScaffold(
     end: Vector3Tuple,
     layer?: number,
     pathSegment?: number,
+    connectionPoints: Vector3Tuple[] = [start, end],
+    startExtension = parameters.tubeEndExtension,
+    endExtension = parameters.tubeEndExtension,
   ) => {
-    const length = round(vectorDistance(start, end))
+    const [physicalStart, physicalEnd] = extendLine(start, end, startExtension, endExtension)
+    const length = round(vectorDistance(physicalStart, physicalEnd))
     if (length <= 0.001) return
-    members.push({ id: `M${memberSequence++}`, type, start, end, length, layer, pathSegment })
+    members.push({
+      id: `M${memberSequence++}`,
+      type,
+      start: physicalStart,
+      end: physicalEnd,
+      connectionPoints,
+      length,
+      layer,
+      pathSegment,
+    })
   }
 
   const layerCount = Math.max(1, Math.ceil(parameters.height / parameters.liftHeight))
+  const rowCount = Math.max(2, Math.round(parameters.rowCount))
   physical.slice(0, -1).forEach((start2d, segmentIndex) => {
     const end2d = physical[segmentIndex + 1]
     const segmentLength = Math.hypot(end2d[0] - start2d[0], end2d[1] - start2d[1])
+    if (segmentLength <= 0.001) {
+      warnings.push({
+        id: `zero-length-${segmentIndex}`,
+        message: `第 ${segmentIndex + 1} 段的两个节点重合，请移动节点或删除该路径段。`,
+      })
+      return
+    }
     const bayCount = Math.max(1, Math.ceil(segmentLength / parameters.postSpacing))
     const bayLength = segmentLength / bayCount
     const direction: [number, number] = [
@@ -195,11 +268,11 @@ export function calculateScaffold(
       (end2d[1] - start2d[1]) / segmentLength,
     ]
     const normal: [number, number] = [-direction[1], direction[0]]
-    const rows: Array<Array<Vector3Tuple>> = [[], []]
+    const rows: Array<Array<Vector3Tuple>> = Array.from({ length: rowCount }, () => [])
 
     for (let station = 0; station <= bayCount; station += 1) {
-      for (let row = 0; row < 2; row += 1) {
-        const offset = row * parameters.width
+      for (let row = 0; row < rowCount; row += 1) {
+        const offset = (row / (rowCount - 1)) * parameters.width
         const point: Vector3Tuple = [
           round(start2d[0] + direction[0] * bayLength * station + normal[0] * offset),
           0,
@@ -209,7 +282,16 @@ export function calculateScaffold(
         const key = pointKey(point)
         if (!postKeys.has(key)) {
           postKeys.add(key)
-          addMember('post', point, [point[0], parameters.height, point[2]], undefined, segmentIndex)
+          addMember(
+            'post',
+            point,
+            [point[0], parameters.height, point[2]],
+            undefined,
+            segmentIndex,
+            [point, [point[0], parameters.height, point[2]]],
+            0,
+            parameters.postTopExtension,
+          )
         }
       }
     }
@@ -229,13 +311,15 @@ export function calculateScaffold(
       }
 
       rows[0].forEach((outerPoint, station) => {
-        const innerPoint = rows[1][station]
+        const innerPoint = rows[rowCount - 1][station]
+        const transverseConnections = rows.map((row) => [row[station][0], elevation, row[station][2]] as Vector3Tuple)
         addMember(
           'transverse',
           [outerPoint[0], elevation, outerPoint[2]],
           [innerPoint[0], elevation, innerPoint[2]],
           layer,
           segmentIndex,
+          transverseConnections,
         )
         if (
           station % parameters.wallTieHorizontalBays === 0 &&
@@ -254,19 +338,47 @@ export function calculateScaffold(
           )
         }
       })
+
+      if (layer % Math.max(1, Math.round(parameters.deckLiftInterval)) === 0) {
+        for (let bay = 0; bay < bayCount; bay += 1) {
+          const outerStart = rows[0][bay]
+          const outerEnd = rows[0][bay + 1]
+          const innerEnd = rows[rowCount - 1][bay + 1]
+          const innerStart = rows[rowCount - 1][bay]
+          const deckElevation = elevation + 0.055
+          decks.push({
+            id: `D${decks.length + 1}`,
+            corners: [
+              [outerStart[0], deckElevation, outerStart[2]],
+              [outerEnd[0], deckElevation, outerEnd[2]],
+              [innerEnd[0], deckElevation, innerEnd[2]],
+              [innerStart[0], deckElevation, innerStart[2]],
+            ],
+            area: round(bayLength * parameters.width),
+            layer,
+            pathSegment: segmentIndex,
+          })
+        }
+      }
     }
 
     for (let startBay = 0; startBay < bayCount; startBay += parameters.braceBayCount) {
       const endBay = Math.min(bayCount, startBay + parameters.braceBayCount)
-      const braceHeight = Math.min(parameters.height, parameters.liftHeight * 2)
-      for (const row of rows) {
-        const reverse = Math.floor(startBay / parameters.braceBayCount) % 2 === 1
-        const bottom = row[reverse ? endBay : startBay]
-        const top = row[reverse ? startBay : endBay]
+      const outerRow = rows[0]
+      for (let startLift = 0; startLift < layerCount; startLift += 2) {
+        const bottomElevation = round(startLift * parameters.liftHeight)
+        const topElevation = Math.min(parameters.height, round((startLift + 2) * parameters.liftHeight))
         addMember(
           'brace',
-          [bottom[0], 0.15, bottom[2]],
-          [top[0], braceHeight, top[2]],
+          [outerRow[startBay][0], bottomElevation + 0.1, outerRow[startBay][2]],
+          [outerRow[endBay][0], topElevation, outerRow[endBay][2]],
+          undefined,
+          segmentIndex,
+        )
+        addMember(
+          'brace',
+          [outerRow[endBay][0], bottomElevation + 0.1, outerRow[endBay][2]],
+          [outerRow[startBay][0], topElevation, outerRow[startBay][2]],
           undefined,
           segmentIndex,
         )
@@ -281,7 +393,22 @@ export function calculateScaffold(
     }
   })
 
-  return { members, warnings, materials: optimizeCuts(members, parameters.stockLengths) }
+  const connectors: ScaffoldConnector[] = members
+    .filter((member) => member.type !== 'post')
+    .flatMap((member) => member.connectionPoints.map((position, index) => ({
+      id: `C-${member.id}-${index + 1}`,
+      type: member.type === 'brace' ? 'swivel' as const : 'rightAngle' as const,
+      position,
+      memberId: member.id,
+    })))
+
+  return {
+    members,
+    decks,
+    connectors,
+    warnings,
+    materials: optimizeCuts(members, decks, connectors, parameters.stockLengths),
+  }
 }
 
 export function countMembers(layout: ScaffoldLayout) {
